@@ -1,0 +1,36 @@
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+    <Platform>x64</Platform>
+    <PlatformTarget>x64</PlatformTarget>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>LeGoMyCursor.Setup</RootNamespace>
+    <AssemblyName>LeGoMyCursor.Setup</AssemblyName>
+    <OutputPath>..\build\release\</OutputPath>
+    <IntermediateOutputPath>..\build\wpf-obj\</IntermediateOutputPath>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>legomycursor.ico</ApplicationIcon>
+    <StartupObject>LeGoMyCursor.Setup.App</StartupObject>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
+    <Optimize>true</Optimize>
+    <LangVersion>7.3</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Xaml"/>
+    <Reference Include="WindowsBase"/><Reference Include="PresentationCore"/><Reference Include="PresentationFramework"/>
+    <Page Include="App.xaml"/><Page Include="MainWindow.xaml"/><Page Include="Styles.xaml"/>
+    <Compile Include="App.xaml.cs"/><Compile Include="MainWindow.xaml.cs"/><Compile Include="UiState.cs"/>
+    <Compile Include="Lifecycle.cs"/><Compile Include="InstallerController.cs"/><Compile Include="InstallerOptions.cs"/>
+    <Compile Include="Platform.cs"/><Compile Include="Record.cs"/><Compile Include="..\build\wpf-obj\Version.cs"/>
+    <Resource Include="legomycursor.ico"/>
+    <EmbeddedResource Include="..\build\release\pkg\legomycursor.inf"><LogicalName>legomycursor.inf</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\build\release\pkg\legomycursor.dll"><LogicalName>legomycursor.dll</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\build\release\pkg\legomycursor.cat"><LogicalName>legomycursor.cat</LogicalName></EmbeddedResource>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+  <Target Name="ValidateConfiguration" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(Configuration)' != 'Release'" Text="Use the Release configuration through build-wpf.cmd."/>
+  </Target>
+</Project>

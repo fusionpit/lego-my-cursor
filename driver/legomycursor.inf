@@ -1,0 +1,82 @@
+;
+; legomycursor.inf - UMDF 2 upper device filter on the Legion Go 2 touchpad collection (HID\VID_17EF&UP:000D_U:0005).
+; Corrects out-of-range (0xFFFF) finger-lift coordinates before Windows processes the touchpad reports.
+;
+; Docs followed:
+;  WDF directives:     https://learn.microsoft.com/windows-hardware/drivers/wdf/specifying-wdf-directives-in-inf-files
+;  Reflector as filter: https://learn.microsoft.com/windows-hardware/drivers/wdf/adding-the-reflector
+;                       (Windows 11: Include=WUDFRD.inf, Needs=WUDFRD_UpperFilter.NT[.HW|.Services|.Filters];
+;                        "WUDFRd" is the kernel service/UpperFilters entry; UmdfService/UmdfServiceOrder locate our DLL)
+;  Kernel-mode clients: https://learn.microsoft.com/windows-hardware/drivers/wdf/supporting-kernel-mode-clients-in-umdf-drivers
+;  Include/Needs:       https://learn.microsoft.com/windows-hardware/drivers/install/inf-ddinstall-section
+; Inbox precedent for "upper filter + null service on a raw HID collection": xinputhid.inf [GIP_Hid.*].
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = HIDClass
+ClassGuid   = {745a17a0-74d3-11d0-b6fe-00a0c90f57da}
+Provider    = %Provider%
+CatalogFile = legomycursor.cat
+DriverVer   =                       ; filled by stampinf
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13                 ; DriverStore (run-from-driver-store); ServiceBinary below matches
+
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+legomycursor.dll = 1
+
+[Manufacturer]
+%Provider% = Models, NTamd64.10.0...22000   ; WUDFRD.inf exists only on Windows 11+
+
+[Models.NTamd64.10.0...22000]
+; Match usage across mode-specific PIDs: 61EB XInput, 61EC/61ED DInput attached/detached, 61EE FPS.
+; This ID persists across modes (verified on 61EB/61ED, both COL03). Rank 0x00FF0002 beats input.inf (0x00FF1003).
+; Also matches other Lenovo USB precision touchpads; correction targets report ID 1.
+%DeviceDesc% = legomycursor_Install, HID\VID_17EF&UP:000D_U:0005
+
+; input.inf maps HID_DEVICE_UP:000D_U:0005 ("HID-compliant touch pad") to HID_Raw_Inst:
+; [HID_Raw_Inst.NT] (AddProperty GenericDriverInstalled) and [HID_Raw_Inst.NT.Services] (null service, raw PDO).
+; input.inf has no HID_Raw_Inst.NT.HW section, so .HW only pulls in the reflector.
+
+[legomycursor_Install]
+Include  = input.inf, WUDFRD.inf
+Needs    = HID_Raw_Inst.NT, WUDFRD_UpperFilter.NT
+CopyFiles = legomycursor_CopyFiles
+
+[legomycursor_Install.HW]
+Include = WUDFRD.inf
+Needs   = WUDFRD_UpperFilter.NT.HW
+
+[legomycursor_Install.Services]
+Include = input.inf, WUDFRD.inf
+Needs   = HID_Raw_Inst.NT.Services, WUDFRD_UpperFilter.NT.Services   ; null function service + WUDFRd (0x1f8)
+
+[legomycursor_Install.Filters]
+Include = WUDFRD.inf
+Needs   = WUDFRD_UpperFilter.NT.Filters      ; AddFilter=WUDFRd, FilterPosition=Upper
+
+[legomycursor_Install.Wdf]
+UmdfService                = legomycursor, legomycursor_Install_Service
+UmdfServiceOrder           = legomycursor
+UmdfKernelModeClientPolicy = AllowKernelModeClients        ; the PTP reader is in kernel mode
+UmdfFileObjectPolicy       = AllowNullAndUnknownFileObjects
+UmdfFsContextUsePolicy     = CanUseFsContext2              ; hidclass keeps its per-open state in FileObject->FsContext
+UmdfMethodNeitherAction    = Copy                          ; IOCTL_HID_GET_COLLECTION_DESCRIPTOR/FLUSH_QUEUE are METHOD_NEITHER; default Reject would fail them
+UmdfHostPriority           = PriorityHigh                  ; own host pool (another driver's crash can't take the touchpad down) + input-latency priority
+
+[legomycursor_Install_Service]
+UmdfLibraryVersion = $UMDFVERSION$
+ServiceBinary      = %13%\legomycursor.dll
+
+[legomycursor_CopyFiles]
+legomycursor.dll
+
+[Strings]
+Provider   = "LeGo My Cursor contributors"
+DiskName   = "LeGo My Cursor install disk"
+DeviceDesc = "HID-compliant touch pad (LeGo My Cursor filter)"

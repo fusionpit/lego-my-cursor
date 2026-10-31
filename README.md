@@ -24,6 +24,9 @@ The easier/cheaper thing is for you to generate a certificate on your own device
 
 This repo has both the driver code and an installer/config program to handle all the necessary steps for you. All of the code used in the releases is available in the repo, and all releases are built here in the open. 
 
+`build-wpf.cmd` builds the driver and bundles it into the setup app. When the fix
+is installed, setup's configuration screen shows whether it is active.
+
 ### Installing
 
 Download the latest release from [instructions to releases here]

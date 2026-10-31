@@ -1,0 +1,146 @@
+using System;
+namespace LeGoMyCursor.Setup
+{
+    internal enum PageKind { Modes, Progress, Completion, Confirmation }
+    internal enum ResultKind { Success, Warning, Failure }
+    internal enum InstallerAction { None, Install, Apply, Reinstall, Uninstall, Clean, Restart }
+
+    internal sealed class UiState
+    {
+        internal PageKind Kind;
+        internal ResultKind Result;
+        internal InstallerAction Action;
+        internal bool Installed, AllowChange, RebootRequired;
+        internal int SavedMode = Platform.ModeSimple, SelectedMode = Platform.ModeSimple;
+        internal string Heading = "", Detail = "", Caution = "", Stage = "", Primary = "Done", Secondary = "";
+        internal string Status = ""; // The Modes page status line; the UI thread updates it when the check finishes.
+
+        internal static UiState Progress(string heading)
+        {
+            return new UiState
+            {
+                Kind = PageKind.Progress,
+                Heading = heading,
+                Stage = "Preparing changes…",
+                Detail = "Your touchpad may pause briefly."
+            };
+        }
+
+        internal static UiState Confirmation(InstallerAction action)
+        {
+            var state = new UiState { Kind = PageKind.Confirmation, Action = action, Secondary = "Cancel" };
+            switch (action)
+            {
+                case InstallerAction.Reinstall:
+                    state.Primary = "Reinstall";
+                    state.Heading = "Reinstall LeGo My Cursor?";
+                    state.Detail = "This reinstalls the touchpad fix and keeps your selected mode.\n" +
+                        "Your touchpad will pause briefly.";
+                    break;
+                case InstallerAction.Uninstall:
+                    state.Primary = "Uninstall";
+                    state.Heading = "Uninstall LeGo My Cursor?";
+                    state.Detail = "This removes the touchpad fix and its settings.\n" +
+                        "Your touchpad will pause briefly during removal.";
+                    break;
+                case InstallerAction.Clean:
+                    state.Primary = "Clean up";
+                    state.Heading = "Clean up LeGo My Cursor?";
+                    state.Detail = "This removes all copies of the touchpad fix,\n" +
+                        "saved settings, and installed app files.";
+                    state.Caution = "Your touchpad may pause briefly.";
+                    break;
+                case InstallerAction.Restart:
+                    state.Primary = "Restart now";
+                    state.Secondary = "Later";
+                    state.Heading = "Restart now to finish?";
+                    state.Detail = "Windows needs a restart to finish changing the touchpad driver.";
+                    state.Caution = "Save any open work before restarting.";
+                    state.RebootRequired = true;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException("action");
+            }
+            return state;
+        }
+
+        // Indexed by mode.
+        internal static readonly string[] Titles = { "Off", "Simple", "Compliant" };
+        internal static readonly string[] Descriptions = {
+            "Turns correction off so you can compare how the touchpad feels.",
+            "Clears bad finger-lift reports. Recommended.",
+            "Also fills in the finger's last position on lift, as the Precision Touchpad spec requires. " +
+                "Try this if taps or clicks misbehave in Simple." };
+
+        internal static UiState Modes(bool installed, int mode = Platform.ModeSimple)
+        {
+            if (mode < Platform.ModeOff || mode > Platform.ModeCompliant || (!installed && mode == Platform.ModeOff))
+                throw new ArgumentOutOfRangeException("mode");
+            return new UiState
+            {
+                Kind = PageKind.Modes,
+                Installed = installed,
+                SavedMode = mode,
+                SelectedMode = mode,
+                Status = installed ? "Status: Checking…" : "",
+                Heading = "Choose your fix mode",
+                Primary = installed ? "Apply mode" : "Install",
+                Secondary = installed ? "Close" : "Cancel",
+                Detail = installed
+                    ? "Your touchpad will pause briefly while changes are applied."
+                    : "Select a mode, then choose Install to add the touchpad driver. " +
+                        "Your touchpad will pause briefly."
+            };
+        }
+
+        internal static UiState Applied(int mode)
+        {
+            if (mode < Platform.ModeOff || mode > Platform.ModeCompliant)
+                throw new ArgumentOutOfRangeException("mode");
+            return new UiState
+            {
+                Kind = PageKind.Completion,
+                Result = ResultKind.Success,
+                Installed = true,
+                SavedMode = mode,
+                Heading = mode == Platform.ModeOff ? "Correction is now off" : Titles[mode] + " mode is now active",
+                AllowChange = true,
+                Secondary = "Change mode"
+            };
+        }
+
+        internal static UiState Completion(Outcome result, SetupOperation operation)
+        {
+            bool modePage = operation == SetupOperation.ApplyMode || (operation == SetupOperation.Install && result.Ok);
+            var state = new UiState
+            {
+                Kind = PageKind.Completion,
+                Heading = result.Title,
+                Detail = result.Detail,
+                RebootRequired = result.Reboot,
+                Result = result.Status
+            };
+            if (modePage)
+            {
+                state.SavedMode = (int)result.Mode;
+                state.Installed = true;
+                state.AllowChange = true;
+                state.Secondary = "Change mode";
+                // Install keeps its own title and Start menu hint, as Reinstall does.
+                state.Heading = result.Kind != OutcomeKind.Mode ? result.Title
+                    : result.ModeActive ? UiState.Applied((int)result.Mode).Heading
+                    : "Your mode could not be fully applied";
+                state.Result = result.ModeActive && result.Status == ResultKind.Success
+                    ? ResultKind.Success : ResultKind.Warning;
+                if (result.ModeActive && result.Kind == OutcomeKind.Mode)
+                {
+                    state.Detail = "";
+                    state.Caution = result.Warning;
+                }
+            }
+            if (result.Reboot && !result.ModeActive)
+                state.Detail += "\n\nRestart required to finish.";
+            return state;
+        }
+    }
+}

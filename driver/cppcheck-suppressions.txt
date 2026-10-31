@@ -1,0 +1,4 @@
+# Existing Windows-boundary casts are intentional; cast style is outside this analysis pass.
+cstyleCast
+# WDF zero-fills the per-reader PadState context.
+uninitMemberVarNoCtor:*reportfix.h

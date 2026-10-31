@@ -1,0 +1,7 @@
+Checks: >-
+  -*,bugprone-*,cert-*,clang-analyzer-*,
+  -bugprone-signed-bitwise,
+  -bugprone-implicit-widening-of-multiplication-result
+# Byte decoding deliberately uses integer promotions; report offsets multiply small bounded ints.
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*[/\\]driver[/\\]reportfix\.h$'
