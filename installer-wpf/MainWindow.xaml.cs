@@ -42,7 +42,7 @@ namespace LeGoMyCursor.Setup
                 HwndSource.FromHwnd(new WindowInteropHelper(this).Handle).AddHook(WindowMessage);
                 RefreshTheme();
             };
-            ShowPage(UiState.Progress("Opening LeGo My Cursor"));
+            ShowPage(UiState.Loading());
         }
 
         private static void SetLink(Button button, char glyph, string label)
@@ -86,7 +86,7 @@ namespace LeGoMyCursor.Setup
             Caution.Text = state.Caution;
             Stage.Text = state.Stage;
             Caution.Visibility = string.IsNullOrEmpty(state.Caution) ? Visibility.Collapsed : Visibility.Visible;
-            Stage.Visibility = progress ? Visibility.Visible : Visibility.Collapsed;
+            Stage.Visibility = progress && state.Stage.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             DetailScroll.ScrollToTop();
             PrimaryButton.Content = state.Primary;
             SecondaryButton.Content = state.Secondary;
@@ -166,16 +166,21 @@ namespace LeGoMyCursor.Setup
             for (int row = 0; row < order.Length; ++row)
             {
                 int mode = order[row], selected = mode;
+                bool titleOnly = UiState.Descriptions[mode].Length == 0;
                 var radio = new RadioButton
                 {
                     GroupName = "Mode",
                     Style = (Style)FindResource("ModeRadio"),
-                    MinHeight = mode == Platform.ModeCompliant ? 90 : 76,
+                    // A title-only card is as tall as its radio ring plus the ring's top inset.
+                    MinHeight = titleOnly ? 54 : mode == Platform.ModeCompliant ? 90 : 76,
                     Margin = new Thickness(0, 0, 0, !State.Installed && row != order.Length - 1 ? 12 : 0),
                     Tag = mode,
                     IsChecked = mode == State.SelectedMode
                 };
-                var panel = new StackPanel();
+                var panel = new StackPanel
+                {
+                    VerticalAlignment = titleOnly ? VerticalAlignment.Center : VerticalAlignment.Top
+                };
                 var titleRow = new DockPanel { MinHeight = 24 };
                 if (State.Installed && State.SavedMode == mode)
                 {
@@ -205,7 +210,8 @@ namespace LeGoMyCursor.Setup
                     Text = UiState.Descriptions[mode],
                     Margin = new Thickness(0, 2, 0, 0)
                 };
-                panel.Children.Add(description);
+                if (!titleOnly)
+                    panel.Children.Add(description);
                 radio.Content = panel;
                 Action colors = delegate
                 {
@@ -224,7 +230,7 @@ namespace LeGoMyCursor.Setup
                     colors();
                 };
                 colors();
-                AutomationProperties.SetName(radio, UiState.Titles[mode] + ". " + UiState.Descriptions[mode] +
+                AutomationProperties.SetName(radio, (UiState.Titles[mode] + ". " + UiState.Descriptions[mode]).TrimEnd() +
                     (State.Installed && State.SavedMode == mode ? " Current mode." : ""));
                 ModeRows.Children.Add(radio);
             }

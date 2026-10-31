@@ -26,6 +26,12 @@ namespace LeGoMyCursor.Setup
             };
         }
 
+        // Reading state changes nothing, so the page shows no stage or touchpad pause.
+        internal static UiState Loading()
+        {
+            return new UiState { Kind = PageKind.Progress, Heading = "Loading…" };
+        }
+
         internal static UiState Confirmation(InstallerAction action)
         {
             var state = new UiState { Kind = PageKind.Confirmation, Action = action, Secondary = "Cancel" };
@@ -34,14 +40,12 @@ namespace LeGoMyCursor.Setup
                 case InstallerAction.Reinstall:
                     state.Primary = "Reinstall";
                     state.Heading = "Reinstall LeGo My Cursor?";
-                    state.Detail = "This reinstalls the touchpad fix and keeps your selected mode.\n" +
-                        "Your touchpad will pause briefly.";
+                    state.Detail = "Your touchpad will pause briefly.";
                     break;
                 case InstallerAction.Uninstall:
                     state.Primary = "Uninstall";
                     state.Heading = "Uninstall LeGo My Cursor?";
-                    state.Detail = "This removes the touchpad fix and its settings.\n" +
-                        "Your touchpad will pause briefly during removal.";
+                    state.Detail = "Your touchpad will pause briefly during removal.";
                     break;
                 case InstallerAction.Clean:
                     state.Primary = "Clean up";
@@ -67,10 +71,9 @@ namespace LeGoMyCursor.Setup
         // Indexed by mode.
         internal static readonly string[] Titles = { "Off", "Simple", "Compliant" };
         internal static readonly string[] Descriptions = {
-            "Turns correction off so you can compare how the touchpad feels.",
+            "",
             "Clears bad finger-lift reports. Recommended.",
-            "Also fills in the finger's last position on lift, as the Precision Touchpad spec requires. " +
-                "Try this if taps or clicks misbehave in Simple." };
+            "Also fills in the finger's last position on lift, as the Precision Touchpad spec requires." };
 
         internal static UiState Modes(bool installed, int mode = Platform.ModeSimple)
         {

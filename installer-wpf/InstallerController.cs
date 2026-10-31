@@ -85,7 +85,7 @@ namespace LeGoMyCursor.Setup
         private async Task ReadState()
         {
             busy = true;
-            window.ShowPage(UiState.Progress("Reading your fix mode…"));
+            window.ShowPage(UiState.Loading());
             try
             {
                 var result = await OnWorker(() => lifecycle.Query());

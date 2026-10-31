@@ -582,7 +582,7 @@ namespace LeGoMyCursor.Setup
                 : active == ActiveState.Active ? "Installed and active"
                 : active == ActiveState.NoDevice ? "Installed, but no Legion Go touchpad was found"
                 : "Installed, but the fix isn't active";
-            result.Detail = "To change the fix mode later, open LeGo My Cursor from the Start menu.";
+            result.Detail = "To change the mode later, open LeGo My Cursor from the Start menu.";
             if (active == ActiveState.Inactive)
                 result.Detail += " Restart Windows, then run setup again if the fix is still inactive.";
             if (skippedBefore.Count > 0)
