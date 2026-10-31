@@ -158,9 +158,6 @@ namespace LeGoMyCursor.Setup
 
         internal Outcome Execute(SetupOperation operation, uint mode)
         {
-            // Earlier versions could install a tray app; remove it before Program Files is emptied.
-            if (operation != SetupOperation.ApplyMode)
-                Platform.RemoveLegacyTray();
             var outcome = Run(operation, mode);
             if ((operation == SetupOperation.Install || operation == SetupOperation.Reinstall) && outcome.Ok)
                 outcome.Installed = true;

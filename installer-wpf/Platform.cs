@@ -492,101 +492,6 @@ namespace LeGoMyCursor.Setup
             catch (Exception e) { throw Fail("Remove shortcut", Code(e)); }
         }
 
-        // Earlier versions installed a tray app and used the LeGoMyCursor folder. Remove both best effort:
-        // failures are logged, never thrown.
-        internal static void RemoveLegacyTray()
-        {
-            const string tray = "LeGoMyCursor.Tray";
-            string legacy = null;
-            Action<string, Action> attempt = (step, action) =>
-            {
-                try
-                {
-                    action();
-                }
-                catch (Exception e) { Log("Legacy tray cleanup: " + step + " failed: " + e.Message); }
-            };
-            string executable = null;
-            attempt("locating Program Files", () =>
-            {
-                legacy = LegacyInstallDirectory();
-                executable = Path.Combine(legacy, tray + ".exe");
-            });
-            if (executable == null)
-                return;
-            attempt("stopping the tray app", () =>
-            {
-                foreach (var process in Process.GetProcessesByName(tray))
-                {
-                    using (process)
-                    {
-                        attempt("stopping process " + process.Id, () =>
-                        {
-                            if (!SameFile(process.MainModule.FileName, executable))
-                                return; // Stop only the installed copy.
-                            process.Kill();
-                            process.WaitForExit(5000);
-                            Log("Legacy tray cleanup: stopped process " + process.Id);
-                        });
-                    }
-                }
-            });
-            attempt("deleting files", () =>
-            {
-                string setup = Path.Combine(legacy, "LeGoMyCursor.Setup.exe");
-                foreach (string file in new[] { executable, executable + ".new", setup,
-                    Folder(Environment.SpecialFolder.CommonPrograms, "LeGo My Cursor Tray.lnk") })
-                {
-                    if (!File.Exists(file) || (file == setup && SameFile(file, ExePath())))
-                        continue; // Never delete the running setup; Handoff covers that case.
-                    attempt("deleting " + file, () =>
-                    {
-                        File.Delete(file);
-                        Log("Legacy tray cleanup: deleted " + file);
-                    });
-                }
-                if (Directory.Exists(legacy) && !Directory.EnumerateFileSystemEntries(legacy).Any())
-                {
-                    Directory.Delete(legacy);
-                    Log("Legacy tray cleanup: removed empty folder " + legacy);
-                }
-            });
-            // The tray kept per-user startup settings. Setup may run elevated as another user, so visit every loaded
-            // user hive, not just HKCU.
-            attempt("reading user profiles", () =>
-            {
-                foreach (string sid in Registry.Users.GetSubKeyNames())
-                {
-                    if ((!sid.StartsWith("S-1-5-21-", StringComparison.Ordinal) &&
-                        !sid.StartsWith("S-1-12-1-", StringComparison.Ordinal)) ||
-                        sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    attempt("removing startup settings for " + sid, () =>
-                    {
-                        using (var user = Registry.Users.OpenSubKey(sid))
-                        using (var run = user?.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
-                        using (var preferences = user?.OpenSubKey(@"Software\LeGoMyCursor", true))
-                        {
-                            string command = run?.GetValue("LeGoMyCursor") as string;
-                            if (command != null &&
-                                command.IndexOf(tray + ".exe", StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                run.DeleteValue("LeGoMyCursor", false);
-                                Log("Legacy tray cleanup: removed startup entry for " + sid);
-                            }
-                            if (preferences != null)
-                            {
-                                preferences.DeleteValue("StartWithWindows", false);
-                                if (preferences.ValueCount == 0 && preferences.SubKeyCount == 0)
-                                    user.DeleteSubKey(@"Software\LeGoMyCursor", false);
-                                Log("Legacy tray cleanup: removed startup preference for " + sid);
-                            }
-                        }
-                    });
-                }
-            });
-        }
-
         internal static string Sha256(Stream stream)
         {
             using (var sha = SHA256.Create())
@@ -628,12 +533,6 @@ namespace LeGoMyCursor.Setup
         internal static string InstallDirectory()
         {
             return Folder(Environment.SpecialFolder.ProgramFiles, "LeGo My Cursor");
-        }
-
-        // Install folder used before the tray app was removed; only legacy cleanup looks there.
-        internal static string LegacyInstallDirectory()
-        {
-            return Folder(Environment.SpecialFolder.ProgramFiles, "LeGoMyCursor");
         }
 
         internal static bool SameFile(string first, string second)
