@@ -66,7 +66,9 @@ static void FixReport(BYTE *report)
     }
 }
 
-// Mode 2: replace out-of-range coordinates with the contact's last in-range X/Y, and lift at that position.
+// Mode 2: restore out-of-range coordinates and tip-up positions to the last known X/Y. An active contact
+// keeps tip until firmware clears it; a glitch cannot start a touch. Without a known position, keep raw X/Y
+// and clear tip on out-of-range frames.
 // Every in-range tip-down sample is accepted unchanged. Caller holds state.lock.
 static void FixReportStateful(BYTE *report, PadState &state)
 {

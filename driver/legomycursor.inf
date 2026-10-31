@@ -67,7 +67,7 @@ UmdfKernelModeClientPolicy = AllowKernelModeClients        ; the PTP reader is i
 UmdfFileObjectPolicy       = AllowNullAndUnknownFileObjects
 UmdfFsContextUsePolicy     = CanUseFsContext2              ; hidclass keeps its per-open state in FileObject->FsContext
 UmdfMethodNeitherAction    = Copy                          ; IOCTL_HID_GET_COLLECTION_DESCRIPTOR/FLUSH_QUEUE are METHOD_NEITHER; default Reject would fail them
-UmdfHostPriority           = PriorityHigh                  ; own host pool (another driver's crash can't take the touchpad down) + input-latency priority
+UmdfHostPriority           = PriorityHigh                  ; increased thread priority; shares a separate pool with other high-priority drivers
 
 [legomycursor_Install_Service]
 UmdfLibraryVersion = $UMDFVERSION$
