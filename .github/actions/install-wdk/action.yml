@@ -1,0 +1,14 @@
+name: Install WDK
+description: Installs the pinned Microsoft.Windows.WDK.x64 NuGet package that driver/build-env.cmd expects under driver/.wdk.
+
+runs:
+  using: composite
+  steps:
+    - name: Install pinned WDK package
+      shell: pwsh
+      run: |
+        nuget install Microsoft.Windows.WDK.x64 -Version 10.0.26100.6584 -OutputDirectory driver/.wdk -DependencyVersion Ignore -NonInteractive
+        if ($LASTEXITCODE) { throw 'WDK package installation failed.' }
+        if (!(Test-Path 'driver/.wdk/Microsoft.Windows.WDK.x64.10.0.26100.6584/c/Include/wdf/umdf/2.33/wdf.h')) {
+          throw 'The WDK package layout changed; update driver/build-env.cmd.'
+        }

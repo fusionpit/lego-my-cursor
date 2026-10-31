@@ -67,3 +67,29 @@ exit status. Analysis runs locally and does not upload source or results.
 
 Analyzer executables, query caches, and generated reports are build dependencies
 or output, not source files to commit.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on pushes to `main`, pull requests, and `v*`
+tags. It installs the pinned WDK package and tool versions listed above, then
+runs the checks in parallel jobs:
+
+- Formatting and script lint: `clang-format --dry-run --Werror` on the driver
+  sources, `dotnet format whitespace --verify-no-changes` on the installer, and
+  PSScriptAnalyzer on every tracked `.ps1` file.
+- Driver: `check-reports.cmd`, `build.cmd` (MSVC `/W4 /WX /analyze`), and
+  `analyze.cmd` (clang-tidy and Cppcheck). Reports are uploaded as the
+  `driver-analysis` artifact; the MSVC SARIF also goes to code scanning.
+- CodeQL: the driver build traced by the CodeQL action, analyzed with the
+  `security-extended` suite and the Microsoft `windows-drivers` recommended
+  suite. Any finding fails the job.
+- Installer: `installer-wpf/check-options.ps1`, then `build-wpf.cmd` with the
+  tag's version (`0.0.0` otherwise). The installer and its `.sha256` are
+  uploaded as the `LeGoMyCursor.Setup` artifact.
+
+On a `vX.Y.Z` tag the installer job also records a GitHub build-provenance
+attestation, and a final job verifies the checksum and attestation before
+creating or updating a draft release with `.github/release.ps1` and the notes
+in `.github/release-notes.md`. A published release is never replaced. Run
+`.github/check-release.ps1` locally to exercise the release script against a
+mocked `gh`.

@@ -33,6 +33,21 @@ Download the latest release from [instructions to releases here]
 
 [other install instructions here]
 
+#### Verifying the download [🤖 written]
+
+Every release is built by the [CI workflow](.github/workflows/ci.yml) from the tagged source. Download `LeGoMyCursor.Setup.exe` and `LeGoMyCursor.Setup.exe.sha256` from the same release, then compare the hashes in PowerShell:
+
+```powershell
+(Get-FileHash .\LeGoMyCursor.Setup.exe -Algorithm SHA256).Hash
+Get-Content .\LeGoMyCursor.Setup.exe.sha256
+```
+
+To check GitHub's build-provenance attestation with the [GitHub CLI](https://cli.github.com/), replace `OWNER/REPO` with the repository shown on the release page:
+
+```powershell
+gh attestation verify .\LeGoMyCursor.Setup.exe --repo OWNER/REPO
+```
+
 ### Windows is blocking something!
 
 [section about Smart App Control]

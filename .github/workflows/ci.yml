@@ -1,0 +1,261 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Derive the installer version from the tag
+        id: version
+        run: |
+          $version = '0.0.0'
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if ($env:GITHUB_REF_NAME -cnotmatch '\Av[0-9]+\.[0-9]+\.[0-9]+\z') {
+              throw 'Release tags must be numeric vX.Y.Z, without a suffix.'
+            }
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+            & ./driver/version.ps1 -Version $version
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Installer version: $version"
+
+  lint:
+    name: Formatting and script lint
+    runs-on: windows-2025
+    steps:
+      # .editorconfig expects CRLF in the working tree; the repository stores LF.
+      - name: Check out with CRLF line endings
+        run: git config --global core.autocrlf true
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install the pinned clang-format
+        run: |
+          pip install clang-format==23.1.3
+          if ($LASTEXITCODE) { throw 'clang-format installation failed.' }
+
+      - name: clang-format (driver C++)
+        run: |
+          $files = git ls-files 'driver/*.cpp' 'driver/*.h'
+          clang-format --style=file --dry-run --Werror $files
+          if ($LASTEXITCODE) { throw 'Run clang-format -i on the listed files; see driver/VERIFICATION.md.' }
+
+      - name: dotnet format (installer C#)
+        run: |
+          dotnet format whitespace installer-wpf --folder --verify-no-changes
+          if ($LASTEXITCODE) { throw 'Run dotnet format whitespace installer-wpf --folder; see installer-wpf/STYLE.md.' }
+
+      - name: PSScriptAnalyzer (PowerShell scripts)
+        run: |
+          # Write-Host is intentional in the build runners: their output is console progress, not pipeline data.
+          $findings = @(git ls-files '*.ps1' | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_ -Severity Warning, Error -ExcludeRule PSAvoidUsingWriteHost
+          })
+          $findings | Format-Table RuleName, ScriptName, Line, Message -AutoSize -Wrap | Out-String -Width 200 | Write-Host
+          if ($findings.Count) { throw "PSScriptAnalyzer reported $($findings.Count) findings." }
+
+  driver:
+    name: Driver build and static analysis
+    runs-on: windows-2025
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/install-wdk
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install the pinned clang-tidy
+        run: |
+          pip install clang-tidy==23.1.4
+          if ($LASTEXITCODE) { throw 'clang-tidy installation failed.' }
+
+      - name: Install the pinned Cppcheck
+        run: |
+          $msi = Join-Path $env:RUNNER_TEMP 'cppcheck-2.22.0-x64-Setup.msi'
+          Invoke-WebRequest -Uri 'https://github.com/cppcheck-opensource/cppcheck/releases/download/2.22.0/cppcheck-2.22.0-x64-Setup.msi' -OutFile $msi
+          $hash = (Get-FileHash -LiteralPath $msi -Algorithm SHA256).Hash
+          if ($hash -ne '3929162BAB7E71D1B9B18708EC054FB0188BFC8EA1660979ED95837F5A9F547B') { throw "Unexpected Cppcheck installer hash $hash." }
+          # An administrative install only extracts the files; nothing is registered on the runner.
+          $target = Join-Path $env:RUNNER_TEMP 'cppcheck'
+          $process = Start-Process msiexec -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$target`"" -Wait -PassThru
+          if ($process.ExitCode) { throw "Cppcheck extraction failed with exit code $($process.ExitCode)." }
+          Join-Path $target 'PFiles\Cppcheck' >> $env:GITHUB_PATH
+
+      - name: Report-processing checks
+        run: |
+          cmd /c driver\check-reports.cmd
+          if ($LASTEXITCODE) { throw 'Report-processing checks failed.' }
+
+      - name: Build the driver with MSVC /W4 /WX /analyze
+        run: |
+          cmd /c driver\build.cmd
+          if ($LASTEXITCODE) { throw 'Driver build or MSVC analysis failed.' }
+
+      - name: clang-tidy and Cppcheck
+        run: |
+          cmd /c driver\analyze.cmd
+          if ($LASTEXITCODE) { throw 'Static analysis failed; see the driver-analysis artifact.' }
+
+      - name: Upload analysis reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: driver-analysis
+          path: |
+            driver/out/legomycursor.sarif
+            driver/out/analysis/
+          if-no-files-found: ignore
+
+      - name: Upload MSVC analysis results to code scanning
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: driver/out/legomycursor.sarif
+          category: msvc-analyze
+
+  codeql:
+    name: CodeQL
+    runs-on: windows-2025
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/install-wdk
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended
+          packs: microsoft/windows-drivers@1.10.0:windows-driver-suites/recommended.qls
+
+      - name: Build the driver under the CodeQL tracer
+        run: |
+          cmd /c driver\build.cmd
+          if ($LASTEXITCODE) { throw 'Driver build failed.' }
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:c-cpp
+          output: ${{ runner.temp }}/codeql-results
+
+      - name: Fail on CodeQL findings
+        run: |
+          $findings = @(Get-ChildItem (Join-Path $env:RUNNER_TEMP 'codeql-results') -Filter *.sarif -Recurse | ForEach-Object {
+            (Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json).runs | ForEach-Object { $_.results }
+          } | Where-Object { $_ })
+          foreach ($finding in $findings) { Write-Host "$($finding.ruleId): $($finding.message.text)" }
+          if ($findings.Count) { throw "CodeQL reported $($findings.Count) findings; review them in the Security tab." }
+
+  installer:
+    name: Installer build
+    runs-on: windows-2025
+    needs: version
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      LEGOMYCURSOR_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/install-wdk
+
+      - name: Installer option parsing checks
+        run: ./installer-wpf/check-options.ps1
+
+      - name: Build the driver package and installer
+        run: |
+          if (!(Test-Path "${env:ProgramFiles(x86)}\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\PresentationFramework.dll")) {
+            throw 'The runner image lacks the .NET Framework 4.8 targeting pack.'
+          }
+          cmd /c "build-wpf.cmd $env:LEGOMYCURSOR_VERSION"
+          if ($LASTEXITCODE) { throw 'Installer build failed.' }
+
+      - name: Write the installer checksum
+        run: |
+          $hash = (Get-FileHash -LiteralPath build/release/LeGoMyCursor.Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText("$PWD/build/release/LeGoMyCursor.Setup.exe.sha256", "$hash  LeGoMyCursor.Setup.exe`n")
+          Get-Content build/release/LeGoMyCursor.Setup.exe.sha256
+
+      - name: Attest build provenance
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: build/release/LeGoMyCursor.Setup.exe
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LeGoMyCursor.Setup
+          path: |
+            build/release/LeGoMyCursor.Setup.exe
+            build/release/LeGoMyCursor.Setup.exe.sha256
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    runs-on: ubuntu-latest
+    needs: [version, lint, driver, codeql, installer]
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LEGOMYCURSOR_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: LeGoMyCursor.Setup
+          path: build/release
+
+      - name: Verify the checksum and provenance attestation
+        run: |
+          Push-Location build/release
+          sha256sum -c LeGoMyCursor.Setup.exe.sha256
+          if ($LASTEXITCODE) { throw 'The downloaded installer does not match its checksum.' }
+          Pop-Location
+          gh attestation verify build/release/LeGoMyCursor.Setup.exe --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE) { throw 'Provenance attestation verification failed.' }
+
+      - name: Create or update the draft release
+        run: |
+          ./.github/release.ps1 -Tag $env:GITHUB_REF_NAME -Version $env:LEGOMYCURSOR_VERSION `
+            -Repository $env:GITHUB_REPOSITORY -ServerUrl $env:GITHUB_SERVER_URL `
+            -Asset build/release/LeGoMyCursor.Setup.exe, build/release/LeGoMyCursor.Setup.exe.sha256
