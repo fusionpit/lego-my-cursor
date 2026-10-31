@@ -161,7 +161,13 @@ jobs:
           languages: c-cpp
           build-mode: manual
           queries: security-extended
-          packs: microsoft/windows-drivers@1.10.0:windows-driver-suites/recommended.qls
+          # The windows-drivers suites pull queries from microsoft/cpp-queries, but a compiled
+          # pack cannot download the query packs its suites reference (github/codeql#8412), so
+          # that pack is listed explicitly. The single query named is already part of
+          # recommended.qls; the entry only exists to place the pack in the package cache.
+          packs: |
+            microsoft/windows-drivers@1.10.0:windows-driver-suites/recommended.qls
+            microsoft/cpp-queries@0.0.5:Security/CWE/CWE-119/OverflowBuffer.ql
 
       - name: Build the driver under the CodeQL tracer
         run: |
