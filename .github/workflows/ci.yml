@@ -207,7 +207,9 @@ jobs:
           cmd /c "build-wpf.cmd $env:LEGOMYCURSOR_VERSION"
           if ($LASTEXITCODE) { throw 'Installer build failed.' }
 
+      # Untagged builds only prove the installer compiles; a 0.0.0 EXE is never published or kept.
       - name: Write the installer checksum
+        if: github.ref_type == 'tag'
         run: |
           $hash = (Get-FileHash -LiteralPath build/release/LeGoMyCursor.Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText("$PWD/build/release/LeGoMyCursor.Setup.exe.sha256", "$hash  LeGoMyCursor.Setup.exe`n")
@@ -220,6 +222,7 @@ jobs:
           subject-path: build/release/LeGoMyCursor.Setup.exe
 
       - uses: actions/upload-artifact@v7
+        if: github.ref_type == 'tag'
         with:
           name: LeGoMyCursor.Setup
           path: |

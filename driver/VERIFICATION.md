@@ -84,11 +84,11 @@ runs the checks in parallel jobs:
   `security-extended` suite and the Microsoft `windows-drivers` recommended
   suite. Any finding fails the job.
 - Installer: `installer-wpf/check-options.ps1`, then `build-wpf.cmd` with the
-  tag's version (`0.0.0` otherwise). The installer and its `.sha256` are
-  uploaded as the `LeGoMyCursor.Setup` artifact.
+  tag's version (`0.0.0` otherwise, as a compile check only; nothing is kept).
 
-On a `vX.Y.Z` tag the installer job also records a GitHub build-provenance
-attestation, and a final job verifies the checksum and attestation before
+On a `vX.Y.Z` tag the installer job also writes the `.sha256`, records a GitHub
+build-provenance attestation and uploads both files as the `LeGoMyCursor.Setup`
+artifact, and a final job verifies the checksum and attestation before
 creating or updating a draft release with `.github/release.ps1` and the notes
 in `.github/release-notes.md`. A published release is never replaced. Run
 `.github/check-release.ps1` locally to exercise the release script against a
