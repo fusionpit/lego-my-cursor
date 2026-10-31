@@ -21,6 +21,7 @@ generated files, the SDK, or the WDK.
 ```powershell
 .\driver\check-reports.cmd
 .\driver\build.cmd
+(Get-Item driver\out\legomycursor.dll).VersionInfo | Format-List FileVersion,ProductVersion,CompanyName,FileDescription
 .\driver\analyze.cmd
 ```
 

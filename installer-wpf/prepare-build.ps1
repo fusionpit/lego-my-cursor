@@ -3,9 +3,13 @@ $ErrorActionPreference = 'Stop'
 $driverVersion = & "$PSScriptRoot/../driver/version.ps1" -Version $Version -DriverVersion
 $normalized = (($Version.Split('.') | ForEach-Object { [uint16]::Parse($_) }) -join '.') + '.0'
 $payload = Join-Path $PSScriptRoot '../build/release/pkg'
-# DriverVer is authoritative because the UMDF DLL has no PE version resource.
+# pnputil reports DriverVer, so the INF is the version of record; the DLL's VERSIONINFO must agree with it.
 if ((Get-Content (Join-Path $payload 'legomycursor.inf') -Raw) -notmatch ('(?m)^DriverVer\s*=\s*[^,\r\n]+,\s*' + [regex]::Escape($driverVersion) + '\s*$')) {
     throw "Driver payload version does not match $Version. Run build-wpf.cmd $Version."
+}
+$fileVersion = (Get-Item (Join-Path $payload 'legomycursor.dll')).VersionInfo.FileVersion
+if ($fileVersion -ne $driverVersion) {
+    throw "Driver DLL FileVersion '$fileVersion' does not match DriverVer $driverVersion. Run build-wpf.cmd $Version."
 }
 # Local catalog signing happens on the installing computer; never embed a development-signed DLL.
 $bytes = [IO.File]::ReadAllBytes((Join-Path $payload 'legomycursor.dll'))

@@ -17,10 +17,14 @@ call "%~dp0build-env.cmd" driver
 if errorlevel 1 exit /b 1
 
 if not exist out mkdir out
+set "RC_VERSION=%STAMP_VERSION%"
+if "%RC_VERSION%"=="*" set "RC_VERSION=0.0.0.1"
+for /f "tokens=1-4 delims=." %%a in ("%RC_VERSION%") do rc /nologo /DVER_MAJOR=%%a /DVER_MINOR=%%b /DVER_PATCH=%%c /DVER_BUILD=%%d /Foout\legomycursor.res legomycursor.rc
+if errorlevel 1 exit /b 1
 rem Keep WDK API contracts while excluding external header warnings from static analysis.
 cl /nologo %LEGOMYCURSOR_DRIVER_FLAGS% /WX /analyze /analyze:log out\legomycursor.sarif ^
    /external:I"%WDK%\Include" /external:W4 /analyze:external- ^
-   legomycursor.cpp /Foout\ ^
+   legomycursor.cpp out\legomycursor.res /Foout\ ^
    /link /DLL /GUARD:CF /OPT:REF /OPT:ICF /INCREMENTAL:NO /RELEASE WdfDriverStubUm.lib ntdll.lib kernel32.lib /OUT:out\legomycursor.dll
 if errorlevel 1 exit /b 1
 
