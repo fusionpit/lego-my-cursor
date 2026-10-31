@@ -8,7 +8,11 @@ using System.Text;
 
 namespace LeGoMyCursor.Setup
 {
-    internal enum SetupOperation { Probe = 1, Install = 2, Reinstall = 3, ApplyMode = 4, Uninstall = 5, Clean = 6 }
+    // Update is Reinstall from a newer setup; only the UI starts it.
+    internal enum SetupOperation
+    {
+        Probe = 1, Install = 2, Reinstall = 3, ApplyMode = 4, Uninstall = 5, Clean = 6, Update = 7
+    }
     internal enum OutcomeKind { General, Installed, Mode, Removed, Cleaned, InstalledRestart }
 
     internal sealed class Outcome
@@ -17,6 +21,7 @@ namespace LeGoMyCursor.Setup
         internal string Title, Detail, Warning = "";
         internal OutcomeKind Kind;
         internal uint Mode = Platform.ModeSimple;
+        internal Version InstalledVersion; // Set by Query; null when not installed or the record has no version.
         // Set by Lifecycle.Finish; a successful Query leaves them at Success and exit code 0.
         internal ResultKind Status;
         internal int ExitCode;
@@ -82,6 +87,18 @@ namespace LeGoMyCursor.Setup
                 RunClean + ", then run setup again.");
         }
 
+        // Returns a failure when a newer setup made the installation, so this one would downgrade it.
+        private static Outcome Newer(Record record)
+        {
+            if (record.Version == null || record.Version <= Platform.SetupVersion)
+                return null;
+            return new Outcome(false, "A newer version is installed",
+                "LeGo My Cursor " + record.Version + " is installed; this setup is " + Platform.SetupVersion +
+                ". To change modes, open LeGo My Cursor from the Start menu. " +
+                "To use this version, uninstall first.")
+            { ExitCode = Platform.ERROR_PRODUCT_VERSION };
+        }
+
         // Returns the /probe exit code: the LoadLibraryEx error for the driver DLL, or 1 if extraction failed.
         internal static int Probe()
         {
@@ -116,6 +133,9 @@ namespace LeGoMyCursor.Setup
             uint mode = Platform.ModeSimple;
             if (record.Present)
             {
+                var newer = Newer(record);
+                if (newer != null)
+                    return Finish(newer);
                 try
                 {
                     Platform.ReadMode(out mode);
@@ -134,6 +154,7 @@ namespace LeGoMyCursor.Setup
             return new Outcome(true, "", "")
             {
                 Installed = record.Present,
+                InstalledVersion = record.Version,
                 Mode = mode
             };
         }
@@ -159,7 +180,8 @@ namespace LeGoMyCursor.Setup
         internal Outcome Execute(SetupOperation operation, uint mode)
         {
             var outcome = Run(operation, mode);
-            if ((operation == SetupOperation.Install || operation == SetupOperation.Reinstall) && outcome.Ok)
+            if ((operation == SetupOperation.Install || operation == SetupOperation.Reinstall ||
+                operation == SetupOperation.Update) && outcome.Ok)
                 outcome.Installed = true;
             Finish(outcome);
             Platform.Log("Final outcome: " + outcome.Title + "; " + outcome.Detail +
@@ -186,7 +208,12 @@ namespace LeGoMyCursor.Setup
                 return new Outcome(false, "No installation was recorded",
                     "Install the driver before changing its mode.");
             }
-            return operation == SetupOperation.Reinstall ? Install(record) : ApplyMode(mode);
+            var refused = operation == SetupOperation.ApplyMode ? null : Newer(record);
+            if (refused != null)
+                return refused;
+            return operation == SetupOperation.Reinstall ? Install(record)
+                : operation == SetupOperation.Update ? Install(record, checked((int)mode), true)
+                : ApplyMode(mode);
         }
 
         private Outcome Finish(Outcome outcome)
@@ -195,7 +222,7 @@ namespace LeGoMyCursor.Setup
             outcome.Status = !outcome.Ok ? ResultKind.Failure
                 : SuccessfulCompletion(outcome, RebootRequired) ? ResultKind.Success
                 : ResultKind.Warning;
-            outcome.ExitCode = !outcome.Ok ? Platform.ERROR_INSTALL_FAILURE
+            outcome.ExitCode = !outcome.Ok ? (outcome.ExitCode != 0 ? outcome.ExitCode : Platform.ERROR_INSTALL_FAILURE)
                 : RebootRequired ? Platform.ERROR_SUCCESS_REBOOT_REQUIRED
                 : 0;
             return outcome;
@@ -312,11 +339,20 @@ namespace LeGoMyCursor.Setup
         }
 
         // previous.Present reinstalls (keeping the saved mode); requestedMode Simple..Compliant is a fresh install.
-        internal Outcome Install(Record previous, int requestedMode = -1)
+        // An update is a reinstall from a newer setup that applies requestedMode Off..Compliant instead.
+        internal Outcome Install(Record previous, int requestedMode = -1, bool update = false)
         {
             Platform.Stage("Preparing installation…");
-            var result = new Outcome(false, "Installation failed", "", OutcomeKind.Installed);
-            if (requestedMode != -1 &&
+            var result = new Outcome(false, update ? "Update failed" : "Installation failed", "",
+                OutcomeKind.Installed);
+            if (update && (!previous.Present || requestedMode < Platform.ModeOff ||
+                requestedMode > Platform.ModeCompliant))
+            {
+                result.Detail = "An update requires a fix mode and an existing install record. " +
+                    "Close and run setup again.";
+                return result;
+            }
+            if (!update && requestedMode != -1 &&
                 (previous.Present || requestedMode < Platform.ModeSimple || requestedMode > Platform.ModeCompliant))
             {
                 result.Detail = "A fresh installation requires Simple or Compliant and no existing install record. " +
@@ -359,13 +395,14 @@ namespace LeGoMyCursor.Setup
                     return result;
                 }
                 using (certificate)
-                    return InstallPayload(previous, requestedMode, payload, certificate, result);
+                    return InstallPayload(previous, requestedMode, payload, certificate, result,
+                        update ? "Updated" : "Installed");
             }
             finally { Platform.DeletePayload(payload); }
         }
 
         private Outcome InstallPayload(Record previous, int requestedMode, string payload,
-            X509Certificate2 certificate, Outcome result)
+            X509Certificate2 certificate, Outcome result, string done)
         {
             uint mode = requestedMode >= 0 ? (uint)requestedMode : Platform.ModeSimple;
             bool modePresent = requestedMode >= 0, removedPrevious = false;
@@ -390,15 +427,18 @@ namespace LeGoMyCursor.Setup
             // reads Mode only at device start.
             if (previous.Present)
             {
-                Platform.Stage("Reading your current fix mode…");
-                try
+                if (!modePresent)
                 {
-                    modePresent = Platform.ReadMode(out mode);
-                }
-                catch (Exception e)
-                {
-                    result.Detail = ErrorText("Reading the current fix mode", e);
-                    return result;
+                    Platform.Stage("Reading your current fix mode…");
+                    try
+                    {
+                        modePresent = Platform.ReadMode(out mode);
+                    }
+                    catch (Exception e)
+                    {
+                        result.Detail = ErrorText("Reading the current fix mode", e);
+                        return result;
+                    }
                 }
                 string error = RemoveRecorded(previous, false);
                 if (error != null)
@@ -574,11 +614,11 @@ namespace LeGoMyCursor.Setup
             if (RebootRequired)
                 result.Kind = OutcomeKind.InstalledRestart;
             result.ModeActive = ModeIsActive(modeApplied, active, RebootRequired);
-            result.Title = RebootRequired ? "Installed; restart required"
-                : !modeApplied ? "Installed, but the selected mode needs attention"
-                : active == ActiveState.Active ? "Installed and active"
-                : active == ActiveState.NoDevice ? "Installed, but no Legion Go touchpad was found"
-                : "Installed, but the fix isn't active";
+            result.Title = RebootRequired ? done + "; restart required"
+                : !modeApplied ? done + ", but the selected mode needs attention"
+                : active == ActiveState.Active ? done + " and active"
+                : active == ActiveState.NoDevice ? done + ", but no Legion Go touchpad was found"
+                : done + ", but the fix isn't active";
             result.Detail = "To change the mode later, open LeGo My Cursor from the Start menu.";
             if (active == ActiveState.Inactive)
                 result.Detail += " Restart Windows, then run setup again if the fix is still inactive.";

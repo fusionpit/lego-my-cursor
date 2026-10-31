@@ -30,6 +30,9 @@ namespace LeGoMyCursor.Setup
         internal const string RecordKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LeGoMyCursor";
         internal const string ParametersKey =
             @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\legomycursor\Parameters";
+        // X.Y.Z, matching the DisplayVersion that Record writes; the assembly's fourth part is always 0.
+        internal static readonly Version SetupVersion =
+            new Version(Assembly.GetExecutingAssembly().GetName().Version.ToString(3));
         private const string ProtectedSddl = "O:BAD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)";
         private static readonly string[] Payload = { "legomycursor.inf", "legomycursor.dll", "legomycursor.cat" };
         private static readonly string[] Stores = { "Root", "TrustedPublisher" };
@@ -60,6 +63,7 @@ namespace LeGoMyCursor.Setup
         internal const int ERROR_NO_MORE_ITEMS = 259;
         internal const int ERROR_INSTALL_FAILURE = 1603;
         internal const int ERROR_UNSUPPORTED_TYPE = 1630;
+        internal const int ERROR_PRODUCT_VERSION = 1638;
         internal const int ERROR_RESOURCE_DATA_NOT_FOUND = 1812;
         internal const int ERROR_SUCCESS_REBOOT_REQUIRED = 3010;
         internal const int ERROR_REPARSE_POINT_ENCOUNTERED = 4319;

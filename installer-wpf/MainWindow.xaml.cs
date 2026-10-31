@@ -1,7 +1,6 @@
 using Microsoft.Win32;
 using System;
 using System.ComponentModel;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -28,14 +27,19 @@ namespace LeGoMyCursor.Setup
         private const string RestartSymbol = "M 27,13 A 12,12 0 1 0 27,22 M 27,3 L 27,13 L 17,13";
         private const string FailureSymbol = "M 5,5 L 27,27 M 27,5 L 5,27";
         private const string WarningSymbol = "M 16,2 L 31,29 L 1,29 Z M 16,11 L 16,20 M 16,24 L 16,25";
+        private const string UpdateSymbol = "M 16,3 L 16,21 M 8,13 L 16,21 L 24,13 M 5,28 L 27,28";
 
         internal MainWindow()
         {
             InitializeComponent();
-            Title = "LeGo My Cursor " + Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
+            Title = "LeGo My Cursor " + Platform.SetupVersion.ToString(3);
             SetLink(ReinstallButton, '', "Reinstall");
             SetLink(UninstallButton, '', "Uninstall");
             SetLink(FooterLog, '', "Open log folder");
+            SetLink(ExpandModes, '', "Change fix mode", true); // ChevronDown
+            SetLink(CollapseModes, '', "Change fix mode", true); // ChevronUp
+            AutomationProperties.SetItemStatus(ExpandModes, "Collapsed");
+            AutomationProperties.SetItemStatus(CollapseModes, "Expanded");
             SourceInitialized += delegate
             {
                 HwndSource.FromHwnd(new WindowInteropHelper(this).Handle).AddHook(WindowMessage);
@@ -44,25 +48,26 @@ namespace LeGoMyCursor.Setup
             ShowPage(UiState.Loading());
         }
 
-        private static void SetLink(Button button, char glyph, string label)
+        // A trailing glyph is a small disclosure chevron after the label.
+        private static void SetLink(Button button, char glyph, string label, bool trailing = false)
         {
             var content = new StackPanel { Orientation = Orientation.Horizontal };
+            content.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
             GlyphTypeface typeface;
             var font = new FontFamily("Segoe Fluent Icons");
             if (new Typeface(font, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal)
                     .TryGetGlyphTypeface(out typeface) &&
                 typeface.CharacterToGlyphMap.ContainsKey(glyph))
             {
-                content.Children.Add(new TextBlock
+                content.Children.Insert(trailing ? 1 : 0, new TextBlock
                 {
                     Text = glyph.ToString(),
                     FontFamily = font,
-                    FontSize = 16,
-                    Margin = new Thickness(0, 0, 7, 0),
+                    FontSize = trailing ? 12 : 16,
+                    Margin = trailing ? new Thickness(8, 2, 0, 0) : new Thickness(0, 0, 7, 0),
                     VerticalAlignment = VerticalAlignment.Center
                 });
             }
-            content.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
             button.Content = content;
             AutomationProperties.SetName(button, label);
         }
@@ -72,10 +77,14 @@ namespace LeGoMyCursor.Setup
             State = state;
             sessionReboot |= state.RebootRequired;
             state.RebootRequired = sessionReboot;
-            bool modes = state.Kind == PageKind.Modes, progress = state.Kind == PageKind.Progress;
-            bool confirm = state.Kind == PageKind.Confirmation;
+            bool modes = state.ShowsModes, progress = state.Kind == PageKind.Progress;
+            bool confirm = state.Kind == PageKind.Confirmation, update = state.Kind == PageKind.Update;
             ModeScroll.Visibility = modes ? Visibility.Visible : Visibility.Collapsed;
             StatusPanel.Visibility = modes ? Visibility.Collapsed : Visibility.Visible;
+            ModeHeading.Text = state.Heading;
+            ModeHeading.TextAlignment = ModeHelp.TextAlignment = update ? TextAlignment.Center : TextAlignment.Left;
+            CollapseModes.Visibility = update ? Visibility.Visible : Visibility.Collapsed;
+            ExpandModes.Visibility = update && !modes ? Visibility.Visible : Visibility.Collapsed;
             ModeHelp.Text = state.Detail;
             ModeStatus.Text = state.Status;
             if (modes)
@@ -97,20 +106,21 @@ namespace LeGoMyCursor.Setup
             PrimaryButton.IsDefault = !progress && !confirm;
             SecondaryButton.IsDefault = confirm;
             Spinner.Visibility = progress ? Visibility.Visible : Visibility.Collapsed;
-            SuccessGlyph.Visibility = !modes && !confirm && !progress && state.Result == ResultKind.Success
+            SuccessGlyph.Visibility = !modes && !confirm && !update && !progress && state.Result == ResultKind.Success
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            StatusGlyph.Visibility = !modes && !progress && (confirm || state.Result != ResultKind.Success)
+            StatusGlyph.Visibility = !modes && !progress && (confirm || update || state.Result != ResultKind.Success)
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            string geometry = confirm
+            string geometry = update ? UpdateSymbol
+                : confirm
                 ? (state.Action == InstallerAction.Uninstall || state.Action == InstallerAction.Clean
                     ? RemoveSymbol
                     : RestartSymbol)
                 : state.Result == ResultKind.Failure ? FailureSymbol : WarningSymbol;
             StatusPath.Data = Geometry.Parse(geometry);
             StatusPath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,
-                confirm ? "Accent" : state.Result == ResultKind.Failure ? "Danger" : "Warning");
+                confirm || update ? "Accent" : state.Result == ResultKind.Failure ? "Danger" : "Warning");
             var rotation = (RotateTransform)SpinnerArc.RenderTransform;
             rotation.BeginAnimation(RotateTransform.AngleProperty, null);
             rotation.Angle = 0;
@@ -155,10 +165,12 @@ namespace LeGoMyCursor.Setup
         private void BuildModes()
         {
             // Installed pages show the status line above the help text, which then needs no reserved second line.
-            ModeStatus.Visibility = State.Installed ? Visibility.Visible : Visibility.Collapsed;
-            ModeHelp.Margin = new Thickness(0, State.Installed ? 2 : 12, 0, 0);
+            // The Update page has no status line or Reinstall/Uninstall links; its collapse link sits above the cards.
+            bool update = State.Kind == PageKind.Update, links = State.Installed && !update;
+            ModeStatus.Visibility = links ? Visibility.Visible : Visibility.Collapsed;
+            ModeHelp.Margin = new Thickness(0, update ? 6 : State.Installed ? 2 : 12, 0, 0);
             ModeHelp.MinHeight = State.Installed ? 0 : 36;
-            ModeRows.Margin = new Thickness(0, State.Installed ? 10 : 24, 0, 0);
+            ModeRows.Margin = new Thickness(0, update ? 6 : State.Installed ? 10 : 24, 0, 0);
             ModeRows.Children.Clear();
             int[] order = ModeOrder(State.Installed);
             for (int row = 0; row < order.Length; ++row)
@@ -221,6 +233,11 @@ namespace LeGoMyCursor.Setup
                 radio.Checked += delegate
                 {
                     State.SelectedMode = selected;
+                    if (update)
+                    {
+                        ModeHelp.Text = State.Detail =
+                            UiState.UpdateDetail(State.InstalledVersion, State.SavedMode, selected);
+                    }
                     colors();
                 };
                 radio.Unchecked += delegate
@@ -233,9 +250,25 @@ namespace LeGoMyCursor.Setup
                 ModeRows.Children.Add(radio);
             }
             ReinstallButton.Visibility = UninstallButton.Visibility =
-                State.Installed ? Visibility.Visible : Visibility.Collapsed;
-            ModeLinks.Visibility = State.Installed ? Visibility.Visible : Visibility.Collapsed;
+                links ? Visibility.Visible : Visibility.Collapsed;
+            ModeLinks.Visibility = links ? Visibility.Visible : Visibility.Collapsed;
             ModeLinks.Margin = new Thickness(0, 8, 0, 0);
+        }
+
+        // Collapsing returns focus to the link that reopens the picker; expanding focuses the selected card.
+        private void OnToggleModes(object sender, RoutedEventArgs e)
+        {
+            var state = State;
+            state.Expanded = !state.Expanded;
+            ShowPage(state);
+            if (!state.Expanded)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(delegate
+                {
+                    if (State == state)
+                        ExpandModes.Focus();
+                }));
+            }
         }
 
         private void OnReinstall(object sender, RoutedEventArgs e) { Confirm("reinstall"); }
@@ -288,7 +321,7 @@ namespace LeGoMyCursor.Setup
 
         private async void OnKeyDown(object sender, KeyEventArgs e)
         {
-            if (State.Kind == PageKind.Modes && Keyboard.FocusedElement is RadioButton &&
+            if (State.ShowsModes && Keyboard.FocusedElement is RadioButton &&
                 (e.Key == Key.Down || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Left))
             {
                 int index = ModeRows.Children.IndexOf((RadioButton)Keyboard.FocusedElement);

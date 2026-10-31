@@ -90,9 +90,11 @@ namespace LeGoMyCursor.Setup
             {
                 var result = await OnWorker(() => lifecycle.Query());
                 Environment.ExitCode = result.ExitCode;
-                var state = result.Ok
-                    ? UiState.Modes(result.Installed, (int)result.Mode)
-                    : UiState.Completion(result, SetupOperation.Probe);
+                var state = !result.Ok ? UiState.Completion(result, SetupOperation.Probe)
+                    : result.Installed && result.InstalledVersion != null &&
+                        result.InstalledVersion < Platform.SetupVersion
+                    ? UiState.Update(result.InstalledVersion, (int)result.Mode)
+                    : UiState.Modes(result.Installed, (int)result.Mode);
                 window.ShowPage(state);
                 if (state.Kind == PageKind.Modes && state.Installed)
                     ShowStatus(state);
@@ -153,7 +155,8 @@ namespace LeGoMyCursor.Setup
                         });
                     return;
                 }
-                SetupOperation operation = state.Kind == PageKind.Modes
+                SetupOperation operation = state.Kind == PageKind.Update ? SetupOperation.Update
+                    : state.Kind == PageKind.Modes
                     ? (state.Installed ? SetupOperation.ApplyMode : SetupOperation.Install)
                     : state.Action == InstallerAction.Reinstall ? SetupOperation.Reinstall
                     : state.Action == InstallerAction.Clean ? SetupOperation.Clean
@@ -172,6 +175,7 @@ namespace LeGoMyCursor.Setup
                 operation == SetupOperation.Uninstall ? "Uninstalling LeGo My Cursor…"
                 : operation == SetupOperation.Clean ? "Cleaning LeGo My Cursor…"
                 : operation == SetupOperation.Reinstall ? "Reinstalling LeGo My Cursor…"
+                : operation == SetupOperation.Update ? "Updating to version " + Platform.SetupVersion.ToString(3) + "…"
                 : operation == SetupOperation.Install ? "Installing LeGo My Cursor…"
                 : mode == Platform.ModeOff ? "Turning correction off"
                 : "Applying " + UiState.Titles[mode] + " mode");

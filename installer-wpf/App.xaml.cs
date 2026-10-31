@@ -1,7 +1,6 @@
 using System;
 using System.Windows;
 using System.Threading;
-using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace LeGoMyCursor.Setup
@@ -28,7 +27,7 @@ namespace LeGoMyCursor.Setup
                         // Attach before logging, so /probe output reaches the caller.
                         if (options.Headless)
                             AttachConsole(ATTACH_PARENT_PROCESS);
-                        Platform.InitLog(Assembly.GetExecutingAssembly().GetName().Version.ToString(3),
+                        Platform.InitLog(Platform.SetupVersion.ToString(3),
                             Environment.CommandLine);
                         if (options.Headless)
                             Environment.ExitCode = options.Operation == SetupOperation.Probe

@@ -2,7 +2,6 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using Microsoft.Win32;
 
 namespace LeGoMyCursor.Setup
@@ -15,6 +14,7 @@ namespace LeGoMyCursor.Setup
         internal bool Present;
         internal string Oem = "";
         internal byte[] Thumbprint = new byte[ThumbprintLength];
+        internal Version Version; // Null when DisplayVersion is missing or unparsable; it only picks the update page.
 
         internal static bool ValidOemName(string path)
         {
@@ -29,7 +29,7 @@ namespace LeGoMyCursor.Setup
         // A missing record returns Present == false; unreadable or invalid records throw.
         internal static Record Read()
         {
-            object oem, thumbprint;
+            object oem, thumbprint, version;
             try
             {
                 using (var hklm = Platform.Hklm())
@@ -39,12 +39,16 @@ namespace LeGoMyCursor.Setup
                         return new Record();
                     oem = key.GetValue("Oem");
                     thumbprint = key.GetValue("Thumbprint");
+                    version = key.GetValue("DisplayVersion");
                 }
             }
             catch (Exception e) { throw new Win32Exception(Platform.Code(e)); }
             if (oem == null || thumbprint == null)
                 throw new Win32Exception(Platform.ERROR_FILE_NOT_FOUND);
             var record = new Record { Present = true, Oem = oem as string, Thumbprint = thumbprint as byte[] };
+            Version parsed;
+            if (Version.TryParse(version as string, out parsed))
+                record.Version = new Version(parsed.Major, parsed.Minor, Math.Max(parsed.Build, 0)); // As SetupVersion.
             if (record.Oem == null || record.Thumbprint == null)
                 throw new Win32Exception(Platform.ERROR_UNSUPPORTED_TYPE);
             if (record.Thumbprint.Length != ThumbprintLength || !ValidOemName(record.Oem))
@@ -65,7 +69,7 @@ namespace LeGoMyCursor.Setup
                 using (var key = hklm.CreateSubKey(Platform.RecordKey))
                 {
                     key.SetValue("DisplayName", "LeGo My Cursor");
-                    key.SetValue("DisplayVersion", Assembly.GetExecutingAssembly().GetName().Version.ToString(3));
+                    key.SetValue("DisplayVersion", Platform.SetupVersion.ToString(3));
                     key.SetValue("Publisher", "LeGo My Cursor contributors");
                     key.SetValue("UninstallString", "\"" + executable + "\" /uninstall");
                     key.SetValue("ModifyPath", "\"" + executable + "\"");

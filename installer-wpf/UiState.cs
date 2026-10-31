@@ -1,7 +1,7 @@
 using System;
 namespace LeGoMyCursor.Setup
 {
-    internal enum PageKind { Modes, Progress, Completion, Confirmation }
+    internal enum PageKind { Modes, Progress, Completion, Confirmation, Update }
     internal enum ResultKind { Success, Warning, Failure }
     internal enum InstallerAction { None, Install, Apply, Reinstall, Uninstall, Clean, Restart }
 
@@ -11,6 +11,8 @@ namespace LeGoMyCursor.Setup
         internal ResultKind Result;
         internal InstallerAction Action;
         internal bool Installed, AllowChange, RebootRequired;
+        internal bool Expanded; // The Update page's mode picker is open.
+        internal Version InstalledVersion;
         internal int SavedMode = Platform.ModeSimple, SelectedMode = Platform.ModeSimple;
         internal string Heading = "", Detail = "", Caution = "", Stage = "", Primary = "Done", Secondary = "";
         internal string Status = ""; // The Modes page status line; the UI thread updates it when the check finishes.
@@ -66,6 +68,41 @@ namespace LeGoMyCursor.Setup
                     throw new ArgumentOutOfRangeException("action");
             }
             return state;
+        }
+
+        // Shown instead of Modes when this setup is newer than the installed copy, so opening a new download
+        // never looks like a mode change. Update reinstalls with the selected mode, which starts as the saved one;
+        // the mode cards stay collapsed until the user asks to change it.
+        internal static UiState Update(Version installed, int mode)
+        {
+            return new UiState
+            {
+                Kind = PageKind.Update,
+                Installed = true,
+                InstalledVersion = installed,
+                SavedMode = mode,
+                SelectedMode = mode,
+                Heading = "Update to version " + Platform.SetupVersion.ToString(3) + "?",
+                Detail = UpdateDetail(installed, mode, mode),
+                Caution = "Your touchpad will pause briefly.",
+                Primary = "Update",
+                Secondary = "Cancel"
+            };
+        }
+
+        internal static string UpdateDetail(Version installed, int saved, int selected)
+        {
+            string change = selected == Platform.ModeOff
+                ? (saved == selected ? "keeps correction off." : "turns correction off.")
+                : (saved == selected ? "keeps your " : "switches to ") + Titles[selected] + " mode.";
+            return "Version " + installed.ToString(3) + " is installed.\n" +
+                "Updating replaces the touchpad driver and " + change;
+        }
+
+        // The Modes page, or the Update page with its mode picker open.
+        internal bool ShowsModes
+        {
+            get { return Kind == PageKind.Modes || (Kind == PageKind.Update && Expanded); }
         }
 
         // Indexed by mode.
