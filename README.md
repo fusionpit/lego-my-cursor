@@ -5,6 +5,8 @@
 > 
 > I have tested the driver in both Fortnite (NOT BANNED as of 20261031) and Valorant (NOT BANNED as of 20261031). 
 
+NOTE: AI was used for just about everything BUT this readme file.
+
 There are two issues that you can experience with the Go's touchpad:
 
 1. When you lift your finger off the pad, the cursor shoots off to another location: this could be straight down, straight right, or to the bottom-corner of the screen. This is caused by the firmware writing a special value to the X and or Y coordinates that is supposed to mean "not being touched" but there's also another bit called "Tip Switch" that is supposed to be 0 when the pad is not being touched but it's still set to 1. That is, the firmware sets the X/Y coords to 0xFFFF while Tip Switch is 1. Tip Switch is what matters to Windows, so it reads 0xFFFF as where it "should" go. 
