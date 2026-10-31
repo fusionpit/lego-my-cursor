@@ -40,7 +40,7 @@ namespace LeGoMyCursor.Setup
                 case InstallerAction.Reinstall:
                     state.Primary = "Reinstall";
                     state.Heading = "Reinstall LeGo My Cursor?";
-                    state.Detail = "Your touchpad will pause briefly.";
+                    state.Detail = "Your touchpad will pause briefly during reinstallation.";
                     break;
                 case InstallerAction.Uninstall:
                     state.Primary = "Uninstall";

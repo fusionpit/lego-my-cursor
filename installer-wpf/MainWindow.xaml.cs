@@ -35,7 +35,6 @@ namespace LeGoMyCursor.Setup
             Title = "LeGo My Cursor " + Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
             SetLink(ReinstallButton, '', "Reinstall");
             SetLink(UninstallButton, '', "Uninstall");
-            SetLink(ModeLog, '', "Open log folder");
             SetLink(FooterLog, '', "Open log folder");
             SourceInitialized += delegate
             {
@@ -97,7 +96,6 @@ namespace LeGoMyCursor.Setup
             SecondaryButton.MinWidth = modes ? 96 : 116;
             PrimaryButton.IsDefault = !progress && !confirm;
             SecondaryButton.IsDefault = confirm;
-            FooterLog.Visibility = modes && state.Installed ? Visibility.Collapsed : Visibility.Visible;
             Spinner.Visibility = progress ? Visibility.Visible : Visibility.Collapsed;
             SuccessGlyph.Visibility = !modes && !confirm && !progress && state.Result == ResultKind.Success
                 ? Visibility.Visible
@@ -238,7 +236,6 @@ namespace LeGoMyCursor.Setup
                 State.Installed ? Visibility.Visible : Visibility.Collapsed;
             ModeLinks.Visibility = State.Installed ? Visibility.Visible : Visibility.Collapsed;
             ModeLinks.Margin = new Thickness(0, 8, 0, 0);
-            ModeLog.Margin = new Thickness(State.Installed ? 12 : 0, 0, 0, 0);
         }
 
         private void OnReinstall(object sender, RoutedEventArgs e) { Confirm("reinstall"); }

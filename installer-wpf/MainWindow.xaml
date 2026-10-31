@@ -13,7 +13,6 @@
         <StackPanel x:Name="ModeLinks" Orientation="Horizontal" Margin="0,8,0,0">
           <Button x:Name="ReinstallButton" Style="{StaticResource LinkButton}" MinWidth="92" Content="Reinstall" Click="OnReinstall"/>
           <Button x:Name="UninstallButton" Style="{StaticResource LinkButton}" MinWidth="92" Foreground="{DynamicResource Danger}" Content="Uninstall" Margin="10,0,0,0" Click="OnUninstall"/>
-          <Button x:Name="ModeLog" Style="{StaticResource LinkButton}" Content="Open log folder" Margin="10,0,0,0" Click="OnLog"/>
         </StackPanel>
       </StackPanel>
     </ScrollViewer>
