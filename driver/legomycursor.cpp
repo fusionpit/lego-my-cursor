@@ -81,7 +81,7 @@ _Use_decl_annotations_ static NTSTATUS EvtDeviceAdd(WDFDRIVER, PWDFDEVICE_INIT d
     // HKLM\SYSTEM\...\Control\WUDF\Services is absent on Windows 11 build 26300. Service-wide settings follow
     // controller modes (PIDs 61EB/61ED have separate devnodes); device hardware keys would not.
     // INF AddReg defaults would race .Wdf parent creation. Changes require restarting every touchpad devnode.
-    // pnputil /add-driver deletes Parameters when recreating the service key, so the installer saves Mode,
+    // DiInstallDriverW deletes Parameters when recreating the service key, so the installer saves Mode,
     // restores it after installation, and restarts devnodes again to replace the defaults loaded at install.
     Params *params = WdfObjectGet_Params(device);
     *params = Params{}; // replace WDF's zero-filled context with defaults
