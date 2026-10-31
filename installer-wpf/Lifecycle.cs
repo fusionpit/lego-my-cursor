@@ -422,7 +422,7 @@ namespace LeGoMyCursor.Setup
             }
             if (skippedBefore.Count > 0)
                 Platform.Log("Warning: " + skippedBefore.Count + " driver store entries could not be read");
-            // pnputil /add-driver recreates the UMDF service key, deleting Parameters. Save Mode before installation,
+            // DiInstallDriverW recreates the UMDF service key, deleting Parameters. Save Mode before installation,
             // restore it afterward, then restart touchpads again: the driver initially starts with defaults and
             // reads Mode only at device start.
             if (previous.Present)

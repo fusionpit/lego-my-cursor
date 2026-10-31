@@ -791,7 +791,8 @@ namespace LeGoMyCursor.Setup
                 throw Fail("Clean signer certificates", first);
         }
 
-        // Signs with a new self-signed certificate whose ephemeral key dies with it. The caller owns the certificate.
+        // Signs with a new self-signed certificate whose ephemeral key is released before returning.
+        // The caller owns the returned public-only certificate.
         internal static X509Certificate2 SignCatalog(string catalog)
         {
             X509Certificate2 certificate;
@@ -808,58 +809,60 @@ namespace LeGoMyCursor.Setup
                 }
             }
             catch (CryptographicException e) { throw Fail("Create self-signed certificate", Code(e)); }
-            var memory = new List<IntPtr>();
-            IntPtr Put(object value)
+            using (certificate)
             {
-                memory.Add(Marshal.AllocHGlobal(Marshal.SizeOf(value)));
-                Marshal.StructureToPtr(value, memory[memory.Count - 1], false);
-                return memory[memory.Count - 1];
+                var memory = new List<IntPtr>();
+                IntPtr Put(object value)
+                {
+                    memory.Add(Marshal.AllocHGlobal(Marshal.SizeOf(value)));
+                    Marshal.StructureToPtr(value, memory[memory.Count - 1], false);
+                    return memory[memory.Count - 1];
+                }
+                int hr;
+                try
+                {
+                    memory.Add(Marshal.StringToHGlobalUni(catalog));
+                    var file = new SignerFileInfo { Size = Marshal.SizeOf(typeof(SignerFileInfo)), FileName = memory[0] };
+                    var subject = new SignerSubjectInfo
+                    {
+                        Size = Marshal.SizeOf(typeof(SignerSubjectInfo)),
+                        Index = Put(new SignerIndex()),
+                        Choice = SIGNER_SUBJECT_FILE,
+                        FileInfo = Put(file)
+                    };
+                    var store = new SignerCertStoreInfo
+                    {
+                        Size = Marshal.SizeOf(typeof(SignerCertStoreInfo)),
+                        SigningCert = certificate.Handle,
+                        Policy = SIGNER_CERT_POLICY_CHAIN
+                    };
+                    var signer = new SignerCert
+                    {
+                        Size = Marshal.SizeOf(typeof(SignerCert)),
+                        Choice = SIGNER_CERT_STORE,
+                        StoreInfo = Put(store)
+                    };
+                    var signature = new SignerSignatureInfo
+                    {
+                        Size = Marshal.SizeOf(typeof(SignerSignatureInfo)),
+                        HashAlgorithm = CALG_SHA_256
+                    };
+                    IntPtr context;
+                    hr = SignerSignEx2(0, ref subject, ref signer, ref signature, IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero,
+                        IntPtr.Zero, IntPtr.Zero, out context, IntPtr.Zero, IntPtr.Zero);
+                    if (context != IntPtr.Zero)
+                        SignerFreeSignerContext(context);
+                }
+                finally
+                {
+                    foreach (IntPtr block in memory)
+                        Marshal.FreeHGlobal(block);
+                }
+                Log("SignerSignEx2 catalog-only SHA256: 0x" + hr.ToString("x8"));
+                if (hr < 0)
+                    throw Fail("Sign catalog", hr);
+                return new X509Certificate2(certificate.RawData);
             }
-            int hr;
-            try
-            {
-                memory.Add(Marshal.StringToHGlobalUni(catalog));
-                var file = new SignerFileInfo { Size = Marshal.SizeOf(typeof(SignerFileInfo)), FileName = memory[0] };
-                var subject = new SignerSubjectInfo
-                {
-                    Size = Marshal.SizeOf(typeof(SignerSubjectInfo)),
-                    Index = Put(new SignerIndex()),
-                    Choice = SIGNER_SUBJECT_FILE,
-                    FileInfo = Put(file)
-                };
-                var store = new SignerCertStoreInfo
-                {
-                    Size = Marshal.SizeOf(typeof(SignerCertStoreInfo)),
-                    SigningCert = certificate.Handle,
-                    Policy = SIGNER_CERT_POLICY_CHAIN
-                };
-                var signer = new SignerCert
-                {
-                    Size = Marshal.SizeOf(typeof(SignerCert)),
-                    Choice = SIGNER_CERT_STORE,
-                    StoreInfo = Put(store)
-                };
-                var signature = new SignerSignatureInfo
-                {
-                    Size = Marshal.SizeOf(typeof(SignerSignatureInfo)),
-                    HashAlgorithm = CALG_SHA_256
-                };
-                IntPtr context;
-                hr = SignerSignEx2(0, ref subject, ref signer, ref signature, IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero,
-                    IntPtr.Zero, IntPtr.Zero, out context, IntPtr.Zero, IntPtr.Zero);
-                if (context != IntPtr.Zero)
-                    SignerFreeSignerContext(context);
-            }
-            finally
-            {
-                foreach (IntPtr block in memory)
-                    Marshal.FreeHGlobal(block);
-            }
-            Log("SignerSignEx2 catalog-only SHA256: 0x" + hr.ToString("x8"));
-            if (hr >= 0)
-                return certificate;
-            certificate.Dispose();
-            throw Fail("Sign catalog", hr);
         }
 
         // Active when every touchpad bound to oem runs under WUDFRd and a WUDFHost loaded that package's DLL.
